@@ -1,0 +1,8 @@
+# Ignore the README.md in the root
+README.md
+
+# Ignore all files in data/ but keep the folder
+data/*
+
+# Optionally, keep the folder itself (empty folder)
+!data/.gitkeep

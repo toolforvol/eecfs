@@ -1,0 +1,206 @@
+
+function [MB,test,time] = CFS_PCsimple_G2(Data,target,alpha,ns,p,maxK)
+%
+
+%
+
+
+if (nargin == 3)
+   ns=max(Data);
+   [~,p]=size(Data);
+   maxK=3;
+end
+
+start=tic;
+
+spouse = cell(1,p);
+
+dep_sp=zeros(p,p);
+
+% Remove the nodes independent of the target node conditioning on
+% empty set, and sort the dependent nodes
+
+score=1000000;
+
+
+
+
+
+
+ADJT = mysetdiff(1:p,target);
+
+%获取目标变量的PC集合和分离集
+[pc,test,~,sepset] = PCsimple_G2_1224(Data,target,alpha,ns,p,maxK,mysetdiff(1:p,target));     
+NoPC = mysetdiff(1:p,[pc,target]); %得到PC集合后得到相应的非PC集
+% pc
+
+% % 
+for i =1:length(pc)
+    X = pc(i); %X是target的PC集中的当前节点
+    for j=1:length(NoPC)
+        Y = NoPC(j);%Y是target的非PC集中的当前节点
+        if ~isempty(find(sepset{Y}==X, 1)) %如果X在Y的分离集中，则不考虑X和Y的关系，跳过当前节点，进行下一个非PC变量的判断
+            continue;
+        end      
+              
+        
+        test = test+1;
+        %判断目标变量和Y在给定X和它们分离集的条件下的关系
+        [pval,dep_sp(X,Y)]=my_g2_test(Y,target,myunion(sepset{Y},X),Data,ns,alpha);    
+
+
+        if isnan(pval)
+            CI=0;
+        else
+            if pval<=alpha
+                CI=0;
+            else
+                CI=1;
+            end
+        end
+
+        if CI==0     %如果是依赖，则Y是T关于X的潜在配偶，那么X将会成为有多个父节点的变量
+
+            spouse{1,X} = myunion(spouse{1,X},Y); %Y视为目标变量关于X的配偶
+        end   
+        
+    end
+    
+    
+    Y = pc(i); %此时Y变成target的PC集中的当前节点，就是循环开始的X
+
+    %经过上述步骤，Y（即X）已被认为有多个父节点
+    %筛选潜在有多个父节点变量的PC集合用于识别配偶
+    [spouse{1,Y},test1] = PCsimple_G2_1224(Data,Y,alpha,ns,p,maxK,spouse{1,Y}); %返回变量Y（即X）的PC集合赋值给spouse{1,Y}（即spouse{1,X}）
+    test = test+test1;
+    %这一步相当于把spouse{1,X}进行重置，最开始只是得到一个潜在的配偶集合，作为第二次学习PC集合的输入，此时得到的才是最终需要进行筛选的配偶集合
+    %相当于将配偶集进行更新
+    
+%     flag=0;
+    ADJT_length = length(spouse{1,Y});
+    ADJT = spouse{1,Y}; %Y（即X）的PC集合
+    tmp_ADJT = ADJT;
+    cutSetSize = 0;
+%     ADJT
+    %最大条件集为3
+    while length(myunion(ADJT,pc)) > cutSetSize&&cutSetSize+1<=maxK
+        for j=1:length(ADJT)
+            X = ADJT(j); %此处X为Y（即49行X）的PC集合的当前节点
+%           在当前节点Y（即49行X）的PC集合和目标变量的PC集合的并集中除去X（98行）和Y（80行）
+            nbrs = mysetdiff(myunion(ADJT,pc), [X,Y]); 
+
+            SS = subsets1(nbrs, cutSetSize);    %进行限制子集大小的子集穷举，作为条件集
+            for si=1:length(SS)
+                S = SS{si};
+                test=test+1;
+                [pval]=my_g2_test(target,X,myunion(S,Y),Data,ns,alpha);     
+                if isnan(pval)
+                    CI=0;
+                else
+                    if pval<=alpha
+                        CI=0;
+                    else
+                        CI=1;
+                    end
+                end
+
+
+                if(CI==1)   
+
+%                     Y
+%                     X
+%                     tmp_ADJT
+%                     disp(myunion(S,Y));
+                    tmp_ADJT = mysetdiff(tmp_ADJT,X); %如果独立，则从当前集合中进行删除
+                    ADJT_length = ADJT_length-1;
+%                     sepset{1,X} = S;
+%                     flag=1;
+                    break;            % no need to test other subsets
+                end
+            end
+
+        end
+%         if flag
+% %             Y
+% %             ADJT
+% %             tmp_ADJT
+%         end
+        ADJT=tmp_ADJT;
+        spouse{1,Y} = ADJT; %保留最终的配偶集合
+        cutSetSize = cutSetSize + 1; %进行下一个限制大小的条件集的条件独立性的判断
+    end    
+    
+    
+    
+    
+    
+    
+    
+    
+end
+% 
+% 
+% 
+% 
+% % % %--------------------------------------- remove false
+% % % 
+% % % % Phase I: Remove false positives from SPST
+% % % 
+
+
+%框架中最后一步移除假阳性节点
+
+pc_tmp=pc;
+for i=1:length(pc) 
+    Y = pc(i);
+
+    CanPC=mysetdiff(pc, Y);
+
+    cutSetSize = 1;            
+    other_PC_break_flag=0;
+    while length(CanPC) >= cutSetSize && cutSetSize<=maxK
+        SS = subsets1(CanPC, cutSetSize);   
+        for si=1:length(SS)
+            Z = SS{si};        
+
+            spouse_test=[];
+            for k=1:length(Z)
+                pc_var = Z(k);
+                spouse_test = myunion(spouse_test,spouse{1,pc_var});
+            end
+            TestSet = myunion(Z,spouse_test);
+
+            test=test+1;
+            [pval]=my_g2_test(Y,target,TestSet,Data,ns,alpha);      
+            if isnan(pval)
+                CI=0;
+            else
+                if pval<=alpha
+                    CI=0;
+                else
+                    CI=1;
+                end
+            end
+
+            if CI==1          
+                pc_tmp=mysetdiff( pc_tmp,Y );
+                spouse{1,Y} = [];
+                other_PC_break_flag=1;   
+                break;
+            end
+        end
+        if other_PC_break_flag==1
+            break;
+        end
+        cutSetSize = cutSetSize + 1;
+    end
+
+end
+pc=pc_tmp;    
+
+MB=myunion(pc,cell2mat(spouse));
+% MB
+
+time=toc(start);
+
+
