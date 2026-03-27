@@ -74,7 +74,6 @@ def perform_cross_validation(X, y, params, n_folds=5):
 
 def step_training(X_train, Y_train, model_file):
     X_train = X_train.astype("float64")
-    lgb_train = lgb.Dataset(X_train, Y_train, free_raw_data=False)
 
     # initial params
     params = {
@@ -84,10 +83,10 @@ def step_training(X_train, Y_train, model_file):
         'nthread': 4,
         'learning_rate': 0.1
     }
-    max_auc = float('0')
+    max_auc = 0.0
     best_params = {}
 
-    # param search 0 
+    # ======= Param search 0: num_leaves & max_depth =======
     for num_leaves in range(5, 100, 5):
         for max_depth in range(3, 8, 1):
             params['num_leaves'] = num_leaves
@@ -95,7 +94,7 @@ def step_training(X_train, Y_train, model_file):
 
             cv_results = lgb.cv(
                 params,
-                lgb_train,
+                lgb.Dataset(X_train, Y_train),  # 每次创建新Dataset
                 seed=2024,
                 nfold=5,
                 metrics=['auc'],
@@ -104,14 +103,12 @@ def step_training(X_train, Y_train, model_file):
             )
 
             mean_auc = pd.Series(cv_results['valid auc-mean']).max()
-            boost_rounds = pd.Series(cv_results['valid auc-mean']).idxmax()
-
             if mean_auc >= max_auc:
                 max_auc = mean_auc
                 best_params['num_leaves'] = num_leaves
                 best_params['max_depth'] = max_depth
 
-    # param search 1 
+    # ======= Param search 1: max_bin & min_data_in_leaf =======
     for max_bin in range(5, 256, 10):
         for min_data_in_leaf in range(1, 102, 10):
             params['max_bin'] = max_bin
@@ -119,7 +116,7 @@ def step_training(X_train, Y_train, model_file):
 
             cv_results = lgb.cv(
                 params,
-                lgb_train,
+                lgb.Dataset(X_train, Y_train),  # 重新创建Dataset
                 seed=2024,
                 nfold=5,
                 metrics=['auc'],
@@ -128,14 +125,12 @@ def step_training(X_train, Y_train, model_file):
             )
 
             mean_auc = pd.Series(cv_results['valid auc-mean']).max()
-            boost_rounds = pd.Series(cv_results['valid auc-mean']).idxmax()
-
             if mean_auc >= max_auc:
                 max_auc = mean_auc
                 best_params['max_bin'] = max_bin
                 best_params['min_data_in_leaf'] = min_data_in_leaf
 
-    # param search 2
+    # ======= Param search 2: feature_fraction & bagging =======
     for feature_fraction in [0.6, 0.7, 0.8, 0.9, 1.0]:
         for bagging_fraction in [0.6, 0.7, 0.8, 0.9, 1.0]:
             for bagging_freq in range(0, 50, 5):
@@ -145,7 +140,7 @@ def step_training(X_train, Y_train, model_file):
 
                 cv_results = lgb.cv(
                     params,
-                    lgb_train,
+                    lgb.Dataset(X_train, Y_train),
                     seed=2024,
                     nfold=5,
                     metrics=['auc'],
@@ -154,22 +149,21 @@ def step_training(X_train, Y_train, model_file):
                 )
 
                 mean_auc = pd.Series(cv_results['valid auc-mean']).max()
-                boost_rounds = pd.Series(cv_results['valid auc-mean']).idxmax()
-
                 if mean_auc >= max_auc:
                     max_auc = mean_auc
                     best_params['feature_fraction'] = feature_fraction
                     best_params['bagging_fraction'] = bagging_fraction
                     best_params['bagging_freq'] = bagging_freq
 
-    # param search 3
+    # ======= Param search 3: lambda_l1 & lambda_l2 =======
     for lambda_l1 in [1e-5, 1e-3, 1e-1, 0.0, 0.1, 0.3, 0.5, 0.7, 0.9, 1.0]:
         for lambda_l2 in [1e-5, 1e-3, 1e-1, 0.0, 0.1, 0.4, 0.6, 0.7, 0.9, 1.0]:
             params['lambda_l1'] = lambda_l1
             params['lambda_l2'] = lambda_l2
+
             cv_results = lgb.cv(
                 params,
-                lgb_train,
+                lgb.Dataset(X_train, Y_train),
                 seed=2024,
                 nfold=5,
                 metrics=['auc'],
@@ -178,20 +172,18 @@ def step_training(X_train, Y_train, model_file):
             )
 
             mean_auc = pd.Series(cv_results['valid auc-mean']).max()
-            boost_rounds = pd.Series(cv_results['valid auc-mean']).idxmax()
-
             if mean_auc >= max_auc:
                 max_auc = mean_auc
                 best_params['lambda_l1'] = lambda_l1
                 best_params['lambda_l2'] = lambda_l2
 
-    # param search 4
+    # ======= Param search 4: min_split_gain =======
     for min_split_gain in [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]:
         params['min_split_gain'] = min_split_gain
 
         cv_results = lgb.cv(
             params,
-            lgb_train,
+            lgb.Dataset(X_train, Y_train),
             seed=2024,
             nfold=5,
             metrics=['auc'],
@@ -200,13 +192,11 @@ def step_training(X_train, Y_train, model_file):
         )
 
         mean_auc = pd.Series(cv_results['valid auc-mean']).max()
-        boost_rounds = pd.Series(cv_results['valid auc-mean']).idxmax()
-
         if mean_auc >= max_auc:
             max_auc = mean_auc
             best_params['min_split_gain'] = min_split_gain
 
-    # the final optimal params
+    # ======= Final params =======
     final_params = {
         'boosting_type': 'gbdt',
         'objective': 'binary',
@@ -216,33 +206,40 @@ def step_training(X_train, Y_train, model_file):
         'verbose': 5,
         'is_unbalance': False
     }
+    final_params.update(best_params)
 
-    # update params
-    for key in best_params.keys():
-        final_params[key] = best_params[key]
+    # set defaults if missing
+    defaults = {
+        'num_leaves': 31,
+        'max_depth': -1,
+        'max_bin': 255,
+        'min_data_in_leaf': 20,
+        'feature_fraction': 1.0,
+        'bagging_fraction': 1.0,
+        'bagging_freq': 0,
+        'lambda_l1': 0.0,
+        'lambda_l2': 0.0,
+        'min_split_gain': 0.0
+    }
+    for k, v in defaults.items():
+        final_params.setdefault(k, v)
 
-    final_params.setdefault('num_leaves', 31)
-    final_params.setdefault('max_depth', -1)
-    final_params.setdefault('max_bin', 255)
-    final_params.setdefault('min_data_in_leaf', 20)
-    final_params.setdefault('feature_fraction', 1.0)
-    final_params.setdefault('bagging_fraction', 1.0)
-    final_params.setdefault('bagging_freq', 0)
-    final_params.setdefault('lambda_l1', 0.0)
-    final_params.setdefault('lambda_l2', 0.0)
-    final_params.setdefault('min_split_gain', 0.0)
-
-    # train the final model
+    # ======= Train final model =======
     lgb_train, lgb_eval = load_data(X_train, Y_train)
+    
+    # 创建目录
+    os.makedirs(os.path.dirname(model_file), exist_ok=True)
+    
     gbm = lgb.train(final_params,
                     lgb_train,
                     num_boost_round=1000,
                     valid_sets=lgb_eval,
                     callbacks=callbacks2)
-    # save model
+    
+    # 保存模型
     joblib.dump(gbm, model_file)
 
-    # train 5-fold validation
+    # 5-fold CV evaluation
     mean_auc, mean_aupr = perform_cross_validation(X_train, Y_train, final_params)
     print(f"\nCross-validation results with best parameters:")
     print(f"Mean AUC: {mean_auc:.4f}")
