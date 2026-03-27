@@ -1,0 +1,2 @@
+KNN	SVM	Compactness	Test	Time
+0.93+0.04	1.00+0.00	10+1	6418+563	0.0514+0.0158

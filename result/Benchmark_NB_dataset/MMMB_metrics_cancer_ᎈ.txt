@@ -1,0 +1,2 @@
+F1	Precision	Recall	Test	Time
+0.6667	1.0000	0.5000	46	0.0640

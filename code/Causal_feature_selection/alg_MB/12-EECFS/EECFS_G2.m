@@ -15,52 +15,42 @@ function [MB,test,time] = EECFS_G2(Data,target,alpha,ns,p,maxK)
 %       MB is the Markov blanket of the target
 %       test is the number of conditional independence tests
 %       time is the runtime of the algorithm
-%
-%
 
-if (nargin == 3)
+
+if (nargin == 3) % 如果只输入前三个参数，默认ns=每个变量最大取值、p=变量数、maxK=3
    ns=max(Data);
    [~,p]=size(Data);
    maxK=3;
 end
 
 start=tic;
-test = 0;
-dep_sp=zeros(p,p);
-spouse = cell(1,p);
+dep_sp=zeros(p,p); % 记录依赖程度
+spouse = cell(1,p); % 每个变量对应的spouse集合
 
-sp=[];
-MB=[];
+% step1: find the candidate PC sets using PCMB and MBOR algorithm
+[PCMB_CPC, test1, ~, dSep] = PCMB_PC_G2(Data,target,alpha,ns,p,maxK); 
+[MBOR_CPC, test2, ~, ~] = MBOR_PC_G2(Data,target,alpha,ns,p,maxK); %若要使用MBOR的dSep将PCSuperSet_G2.m中19行的{}改成[]即可
+test = test1 + test2; % 综合 条件独立检验 （CITs） 统计
 
-% step1:find the candidate PC sets
-% Use PCMB and MBOR algorithm to obtain PC sets
-
-[PCMB_CPC,test1,~,dSep] = PCMB_PC_G2(Data,target,alpha,ns,p,maxK);
-[MBOR_CPC,test2,~,~] = MBOR_PC_G2(Data,target,alpha,ns,p,maxK);%若要使用MBOR的dSep将PCSuperSet_G2.m中19行的{}改成[]即可
-
-test = test1 + test2;
-
-% step2:obtain the intersection,union and difference of the PC sets
+% step2: obtain the intersection, union and difference of the PC sets
 PCinter = myintersect(PCMB_CPC,MBOR_CPC);
 PCunion = myunion(PCMB_CPC,MBOR_CPC);
 PCdiff = mysetdiff(PCunion,PCinter);
 
-% step3:remove wrong PC nodes from PCdiff
-
-%NonTPC euqals to U\PCunion\{T}
-NonTPC = mysetdiff(1:p,myunion(PCunion,target)); 
+% step3: remove wrong PC nodes from PCdiff
+%NonTPC euqals to U \ PCunion \ {T}, 即在U中，但不在PCunion，也不是Target的变量。
+NonTPC = mysetdiff(1:p, myunion(PCunion, target));  % 1:p 代表所有变量索引, myunion表示target本身 + PC候选集合
 remove = [];
-
-for i = 1:length(PCunion)
+for i = 1:length(PCunion) % 针对PCunion中每个元素
     Y = PCunion(i);
     break_flag=0;
-    for j=1:length(NonTPC)
+    for j = 1:length(NonTPC) % 针对所有非target PC元素
         X = NonTPC(j);
-        % S is the conditoned set or separated set
-        S =  myunion(dSep{1,X}, Y);   
-        test = test +1;
+        % S is the conditoned set or separated set S是条件集或分离集
+        S = myunion(dSep{1,X}, Y);   
+        test = test + 1;
         % Judge independence or conditional independence among variables
-        [pval]=my_g2_test(target,X,S,Data,ns,alpha); 
+        [pval]=my_g2_test(target, X, S, Data, ns, alpha); 
         if isnan(pval)        
             CI=0;
         else
@@ -107,13 +97,11 @@ for i = 1:length(PCunion)
     end
 end
 % Process PCdiff set
-PCdiff = mysetdiff(PCdiff,remove);
-
+PCdiff = mysetdiff(PCdiff, remove);
 % Obtain PCselect
 PCselect = myunion(PCinter,PCdiff);
 
 % step4:find the spouse nodes(different from EDMB)
-
 NoPC = mysetdiff(1:p,[PCselect,target]);
 
 for i =1:length(PCselect)
