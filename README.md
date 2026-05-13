@@ -183,9 +183,88 @@ In this task, identifying the true MB set is used as the evaluation objective, a
 - Run: `./code/CFDPSM/run_cfdpsm.py`
 
 
-## 5 Citation Information
+## 5 Use CFDPSM to inference other sSNVs
 
-### 5.1 Causal Learner Package
+
+### 5.1 Feature annotation
+
+1. Annotate SynMall features
+
+```shell
+python ./code/CFDPSM/AnnoSynMall.py
+```
+
+2. Annotate MMSplice features
+
+```shell
+conda activate mmsplice
+bash AnnoMMSplice.sh \
+    ${YOUR_VCF_INPUT} \
+    hg38 \
+    ${YOUR_TASK_DIR}
+```
+
+3. Retrieve sequence
+
+The `bedtools` is needed to download first.
+
+```shell
+python Get_DNA_Sequence.py
+python Get_RNA_Sequence.py
+python Get_Protein_Sequence.py
+```
+
+4. Annotate ifeatureOmega
+
+```shell
+conda activate ifeatureOmega
+cd {YOUR_INSTALL_PATH}/iFeatureOmega-CLI-main/
+# cp ./get_iFeatureOmega_EECFS.py {YOUR_INSTALL_PATH}/iFeatureOmega-CLI-main/ 
+./Anno_iFeatureOmega.sh
+```
+
+5. Annotate MathFeature
+
+```shell
+conda activate mathfeature
+./AnnoMathFeature.sh
+```
+
+6. Annotate ftrCOOL
+
+```shell
+conda activate R
+Rscript ftrCOOL_RNA_EECFS.R
+# reformat
+python Filter_features_ftrCOOL.py \
+--fasta_file ${YOUR_INPUT_DIR}/ref_sequences_rna.fasta \
+--ref_fea ${YOUR_OUTPUT_DIR}/ExpectedValKmerNUC_RNA_ref.xlsx \
+--alt_fea ${YOUR_OUTPUT_DIR}/ExpectedValKmerNUC_RNA_alt.xlsx \
+--output_file ${YOUR_OUTPUT_DIR}/ftrCOOL.csv
+```
+
+7. Concatenate the features
+
+```shell
+python Concatenate_result.py
+```
+
+8. Impute the missing values
+
+```shell
+conda activate R
+Rscript ./code/Preprocess/MissForest.R
+```
+
+## 5.2 Inference
+
+```shell
+python inference.py
+```
+
+## 6 Citation Information
+
+### 6.1 Causal Learner Package
 
 Other MB methods in this repository (except EDMB) are provided via the Causal Learner package:
 
@@ -204,7 +283,7 @@ Please cite:
 }
 ```
 
-### 5.2 EECFS
+### 6.2 EECFS
 ```bibtex
 In preparation.
 ```
